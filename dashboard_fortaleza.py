@@ -3,7 +3,7 @@ import streamlit as st
 import plotly.express as px
 import os # Importa o módulo os para verificar a existência do arquivo
 
-# --- Configurações Iniciais e Mapeamento de Meses ---
+# --- 1. Configurações Iniciais e Mapeamento de Meses ---
 
 # Define um mapeamento de nomes de meses para números para garantir a ordenação correta nos gráficos
 month_to_num = {
@@ -20,18 +20,17 @@ st.set_page_config(
     initial_sidebar_state="expanded" # Faz com que a barra lateral comece expandida
 )
 
-# --- Título Principal do Dashboard ---
 st.title("✈️ Dashboard Interativo de Tráfego Aéreo - Fortaleza")
 st.markdown("Este dashboard apresenta uma análise do tráfego turístico aéreo no Aeroporto de Fortaleza, Ceará.")
 
-# --- Carregamento dos Dados ---
+# --- 2. Carregamento dos Dados ---
 # Tenta carregar o arquivo CSV. Se o arquivo não for encontrado, usa dados de exemplo para demonstração.
 file_path = "TABELA ATUALIZADA.xlsx - Planilha1.csv"
 try:
     # Carrega o arquivo CSV para um DataFrame pandas
     df = pd.read_csv(file_path)
     st.success(f"Dados carregados com sucesso de '{file_path}'!")
-    st.info("⚠️ **Importante:** Certifique-se de que as colunas 'Ano', 'Mês', 'Tipo de Voo' e 'Passageiros' existem no seu arquivo CSV, ou ajuste o código conforme necessário.")
+    st.info("⚠️ **Importante:** Este dashboard espera as colunas 'Ano', 'Mês', 'Tipo de Voo' e 'Passageiros'. Verifique se seu CSV as possui com esses nomes exatos.")
 except FileNotFoundError:
     st.error(f"Arquivo '{file_path}' não encontrado. Carregando dados de exemplo para demonstração.")
     # Dados de exemplo para demonstração caso o arquivo não seja encontrado.
@@ -45,151 +44,68 @@ except FileNotFoundError:
     df = pd.DataFrame(data)
     st.warning("Por favor, substitua os dados de exemplo pelos seus dados reais para uma análise completa.")
 
-# --- Pré-processamento dos Dados ---
+# --- 3. Pré-processamento dos Dados (Com Verificações e Correções Robustas) ---
 if not df.empty:
-    # Garante que a coluna 'Ano' é do tipo inteiro
-    df['Ano'] = df['Ano'].astype(int)
-    # Cria uma coluna numérica para o mês usando o mapeamento, facilitando a ordenação cronológica
+    st.subheader("🛠️ Verificação e Limpeza dos Dados")
+
+    # Mostrar as primeiras linhas do DF e seus tipos de dados antes do processamento
+    st.write("#### 1. Dados Brutos (Primeiras Linhas):")
+    st.dataframe(df.head())
+    st.write("#### 2. Tipos de Dados Originais:")
+    st.text(df.dtypes) # Usar st.text para exibir dtypes no dashboard
+
+    # --- Limpeza e Validação da coluna 'Mês' ---
+    if 'Mês' in df.columns:
+        # 1. Limpeza da coluna 'Mês': Remove espaços em branco e capitaliza a primeira letra de cada palavra
+        df['Mês'] = df['Mês'].astype(str).str.strip().str.capitalize()
+        st.write("#### 3. Valores Únicos da Coluna 'Mês' Após Limpeza:")
+        st.text(df['Mês'].unique()) # Mostrar os meses únicos após a limpeza
+    else:
+        st.error("❌ Erro Crítico: Coluna 'Mês' não encontrada no seu arquivo CSV. Por favor, verifique o nome da coluna no seu CSV.")
+        st.stop() # Para a execução se a coluna crucial estiver faltando
+
+    # --- Validação e Conversão da coluna 'Ano' ---
+    if 'Ano' in df.columns:
+        # Tenta converter 'Ano' para numérico, forçando erros para NaN e depois removendo-os
+        df['Ano'] = pd.to_numeric(df['Ano'], errors='coerce')
+        if df['Ano'].isnull().any():
+            st.warning("⚠️ Foram encontrados valores não numéricos ou em branco na coluna 'Ano'. As linhas com problemas serão removidas.")
+            df.dropna(subset=['Ano'], inplace=True)
+        # Após garantir que são números, converte para inteiro
+        df['Ano'] = df['Ano'].astype(int)
+    else:
+        st.error("❌ Erro Crítico: Coluna 'Ano' não encontrada no seu arquivo CSV. Por favor, verifique o nome da coluna no seu CSV.")
+        st.stop()
+    
+    # --- Validação da coluna 'Passageiros' ---
+    if 'Passageiros' in df.columns:
+        df['Passageiros'] = pd.to_numeric(df['Passageiros'], errors='coerce')
+        if df['Passageiros'].isnull().any():
+            st.warning("⚠️ Foram encontrados valores não numéricos ou em branco na coluna 'Passageiros'. As linhas com problemas serão removidas.")
+            df.dropna(subset=['Passageiros'], inplace=True)
+    else:
+        st.error("❌ Erro Crítico: Coluna 'Passageiros' não encontrada no seu arquivo CSV. Por favor, verifique o nome da coluna no seu CSV.")
+        st.stop()
+
+    # Cria uma coluna numérica para o mês usando o mapeamento
+    # Se algum mês não for encontrado no 'month_to_num', ele se tornará NaN
     df['Mês_Num'] = df['Mês'].map(month_to_num)
-    # Cria uma coluna 'Data' combinando Ano e Mês, útil para gráficos de série temporal
-    df['Data'] = pd.to_datetime(df['Ano'].astype(str) + '-' + df['Mês_Num'].astype(str) + '-01')
-    # Ordena o DataFrame pela coluna 'Data' para garantir a correta exibição nos gráficos de tempo
-    df = df.sort_values(by='Data')
 
-# --- Barra Lateral para Filtros ---
-st.sidebar.header("⚙️ Filtros de Análise")
+    # --- Verificação de Mês_Num após mapeamento ---
+    if df['Mês_Num'].isnull().any():
+        st.warning("⚠️ Foram encontrados meses no seu CSV que NÃO PUDERAM SER MAPEADOS (resultaram em NaN). Verifique a coluna 'Mês' para typos ou formatos inesperados.")
+        st.dataframe(df[df['Mês_Num'].isnull()]) # Mostra as linhas com problema
+        # Remove linhas com meses inválidos se não for possível corrigi-los, para evitar erros futuros
+        df.dropna(subset=['Mês_Num'], inplace=True)
+        st.info("Linhas com meses inválidos (não mapeados) foram removidas para evitar erros.")
 
-# Filtro por Ano: Permite selecionar um ou mais anos
-anos_disponiveis = sorted(df['Ano'].unique())
-ano_selecionado = st.sidebar.multiselect(
-    "Selecione o(s) Ano(s)",
-    options=anos_disponiveis,
-    default=anos_disponiveis # Por padrão, todos os anos são selecionados
-)
-
-# Filtro por Mês: Permite selecionar um ou mais meses
-meses_selecionados = st.sidebar.multiselect(
-    "Selecione o(s) Mês(es)",
-    options=month_order, # Usa a ordem predefinida dos meses
-    default=month_order # Por padrão, todos os meses são selecionados
-)
-
-# Filtro por Tipo de Voo: Verifica se a coluna 'Tipo de Voo' existe antes de criar o filtro
-if 'Tipo de Voo' in df.columns:
-    tipos_voo_disponiveis = df['Tipo de Voo'].unique()
-    tipo_voo_selecionado = st.sidebar.multiselect(
-        "Selecione o Tipo de Voo",
-        options=tipos_voo_disponiveis,
-        default=tipos_voo_disponiveis # Por padrão, todos os tipos de voo são selecionados
+    # --- Criação e Validação da coluna 'Data' ---
+    # 'errors='coerce'' vai transformar qualquer erro de conversão em NaT (Not a Time)
+    df['Data'] = pd.to_datetime(
+        df['Ano'].astype(str) + '-' + df['Mês_Num'].astype(str) + '-01',
+        errors='coerce'
     )
-else:
-    tipo_voo_selecionado = None
-    st.sidebar.warning("Coluna 'Tipo de Voo' não encontrada nos dados. Este filtro não será exibido.")
 
-# --- Aplicação dos Filtros ---
-# Filtra o DataFrame com base nas seleções do usuário
-df_filtrado = df[
-    (df['Ano'].isin(ano_selecionado)) &
-    (df['Mês'].isin(meses_selecionados))
-]
-
-# Aplica o filtro de Tipo de Voo se a coluna existir e o filtro foi selecionado
-if tipo_voo_selecionado is not None:
-    df_filtrado = df_filtrado[df_filtrado['Tipo de Voo'].isin(tipo_voo_selecionado)]
-
-# Exibe uma mensagem de aviso se nenhum dado for encontrado após a filtragem
-if df_filtrado.empty:
-    st.warning("🚫 Nenhum dado encontrado com os filtros selecionados. Por favor, ajuste os filtros.")
-else:
-    # --- Métricas Chave ---
-    st.subheader("📊 Métricas Chave")
-    # Cria três colunas para exibir as métricas lado a lado
-    col1, col2, col3 = st.columns(3)
-
-    # Calcula e exibe o total de passageiros no período filtrado
-    total_passageiros = df_filtrado['Passageiros'].sum()
-    col1.metric("Total de Passageiros", f"{total_passageiros:,.0f}")
-
-    # Calcula e exibe a média de passageiros por mês no período filtrado
-    media_passageiros_mes = df_filtrado.groupby('Data')['Passageiros'].sum().mean()
-    col2.metric("Média de Passageiros por Mês", f"{media_passageiros_mes:,.0f}")
-
-    # Calcula e exibe o número de anos únicos considerados na análise
-    num_anos_filtrados = len(df_filtrado['Ano'].unique())
-    col3.metric("Anos Analisados", num_anos_filtrados)
-
-
-    # --- Visualizações de Dados (Gráficos) ---
-    st.subheader("📈 Visualizações de Dados")
-
-    # Gráfico de Linha: Tráfego de Passageiros ao Longo do Tempo
-    st.markdown("#### Tráfego Total de Passageiros por Mês/Ano")
-    # Agrupa os dados por 'Data' e soma os passageiros para criar a série temporal
-    df_time_series = df_filtrado.groupby('Data')['Passageiros'].sum().reset_index()
-    fig_time_series = px.line(
-        df_time_series,
-        x='Data',
-        y='Passageiros',
-        title='Evolução do Tráfego de Passageiros ao Longo do Tempo',
-        labels={'Passageiros': 'Número de Passageiros', 'Data': 'Data'},
-        markers=True # Adiciona marcadores nos pontos de dados para melhor visualização
-    )
-    fig_time_series.update_layout(hovermode="x unified") # Melhora a interatividade ao passar o mouse
-    st.plotly_chart(fig_time_series, use_container_width=True) # Exibe o gráfico, usando a largura total do contêiner
-
-    # Gráfico de Barras: Passageiros por Tipo de Voo (se a coluna existir)
-    if 'Tipo de Voo' in df.columns:
-        st.markdown("#### Distribuição de Passageiros por Tipo de Voo")
-        # Agrupa os dados por 'Tipo de Voo' e soma os passageiros
-        df_type_of_flight = df_filtrado.groupby('Tipo de Voo')['Passageiros'].sum().reset_index()
-        fig_type_of_flight = px.bar(
-            df_type_of_flight,
-            x='Tipo de Voo',
-            y='Passageiros',
-            title='Passageiros por Tipo de Voo (Nacional vs. Internacional)',
-            labels={'Passageiros': 'Número de Passageiros', 'Tipo de Voo': 'Tipo de Voo'},
-            color='Tipo de Voo' # Usa cores diferentes para cada tipo de voo
-        )
-        st.plotly_chart(fig_type_of_flight, use_container_width=True)
-
-    # Gráfico de Barras: Tráfego Médio de Passageiros por Mês (Agregado por todos os anos filtrados)
-    st.markdown("#### Tráfego Médio de Passageiros por Mês (Agregado)")
-    # Calcula a média de passageiros por mês, reindexando para manter a ordem cronológica dos meses
-    df_monthly_avg = df_filtrado.groupby('Mês')['Passageiros'].mean().reindex(month_order).reset_index()
-    fig_monthly_avg = px.bar(
-        df_monthly_avg,
-        x='Mês',
-        y='Passageiros',
-        title='Média de Passageiros por Mês (Sazonalidade)',
-        labels={'Passageiros': 'Média de Passageiros', 'Mês': 'Mês'},
-        color='Mês' # Usa cores diferentes para cada mês
-    )
-    st.plotly_chart(fig_monthly_avg, use_container_width=True)
-
-
-    # --- Análise Descritiva ---
-    st.subheader("🔬 Análise Descritiva dos Dados Filtrados")
-    st.write("Aqui você pode ver estatísticas descritivas para o número de passageiros no período e filtros selecionados. Estas medidas fornecem um resumo estatístico dos dados.")
-
-    # Gera estatísticas descritivas para a coluna 'Passageiros'
-    desc_stats = df_filtrado['Passageiros'].describe().to_frame()
-    st.dataframe(desc_stats)
-
-    st.markdown("""
-    **Interpretação das Estatísticas:**
-    * **count:** O número de observações (registros) não nulas na coluna 'Passageiros' do conjunto de dados filtrado.
-    * **mean (média):** A média aritmética do número de passageiros. Indica o valor central dos dados.
-    * **std (desvio padrão):** Uma medida da dispersão ou variabilidade dos dados em torno da média. Um valor alto indica que os pontos de dados estão espalhados por uma ampla gama de valores.
-    * **min (mínimo):** O menor número de passageiros registrado no conjunto de dados filtrado.
-    * **25% (primeiro quartil):** O valor abaixo do qual 25% dos dados se encontram.
-    * **50% (mediana):** O valor do meio do conjunto de dados quando ordenado. É menos sensível a valores extremos (outliers) do que a média.
-    * **75% (terceiro quartil):** O valor abaixo do qual 75% dos dados se encontram.
-    * **max (máximo):** O maior número de passageiros registrado no conjunto de dados filtrado.
-    """)
-
-    # --- Tabela de Dados Filtrados ---
-    st.subheader("📋 Tabela de Dados Filtrados")
-    st.write("Visualize os dados brutos após a aplicação dos filtros.")
-    # Exibe o DataFrame filtrado, ordenado por data para facilitar a leitura
-    st.dataframe(df_filtrado[['Ano', 'Mês', 'Tipo de Voo', 'Passageiros', 'Data']].sort_values(by='Data'))
-
+    # --- Verificação de Data após conversão ---
+    if df['Data'].isnull().any():
+        st.warning("⚠️ For
