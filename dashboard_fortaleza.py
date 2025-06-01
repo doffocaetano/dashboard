@@ -3,6 +3,16 @@ import streamlit as st
 import plotly.express as px
 import os # Importa o módulo os para verificar a existência do arquivo
 
+# ==============================================================================
+# ATENÇÃO CRÍTICA:
+# VOCÊ DEVE SUBSTITUIR 'NOME_REAL_DA_COLUNA_TIPO_DE_VOO'
+# PELO NOME EXATO DA COLUNA NO SEU ARQUIVO CSV PARA O 'TIPO DE VOO'.
+# EX: SE NO SEU CSV A COLUNA É 'TIPO_VOO', MUDE PARA:
+# COLUNA_TIPO_DE_VOO = 'TIPO_VOO'
+# ==============================================================================
+COLUNA_TIPO_DE_VOO = 'Tipo de Voo' # <<<< SUBSTITUA AQUI COM O NOME EXATO DO SEU CSV!
+
+
 # --- 1. Configurações Iniciais e Mapeamento de Meses ---
 
 # Define um mapeamento de nomes de meses para números para garantir a ordenação correta nos gráficos
@@ -30,7 +40,8 @@ try:
     # Carrega o arquivo CSV para um DataFrame pandas
     df = pd.read_csv(file_path)
     st.success(f"Dados carregados com sucesso de '{file_path}'!")
-    st.info("⚠️ **Importante:** Este dashboard espera as colunas 'Ano', 'Mês', 'Tipo de Voo' e 'Passageiros'. Verifique se seu CSV as possui com esses nomes exatos.")
+    st.info("⚠️ **Importante:** Este dashboard espera as colunas 'Ano', 'Mês', 'Passageiros' e a coluna de Tipo de Voo (definida acima). Verifique se seu CSV as possui.")
+
 except FileNotFoundError:
     st.error(f"Arquivo '{file_path}' não encontrado. Carregando dados de exemplo para demonstração.")
     # Dados de exemplo para demonstração caso o arquivo não seja encontrado.
@@ -42,7 +53,10 @@ except FileNotFoundError:
         'Passageiros': [10000, 5000, 12000, 6000, 11000, 6500, 13000, 7000, 12000, 7500, 14000, 8000]
     }
     df = pd.DataFrame(data)
+    # Se usando dados de exemplo, a coluna 'Tipo de Voo' é definida automaticamente.
+    # Se a constante COLUNA_TIPO_DE_VOO for diferente, ela será ignorada para os dados de exemplo.
     st.warning("Por favor, substitua os dados de exemplo pelos seus dados reais para uma análise completa.")
+
 
 # --- 3. Pré-processamento dos Dados (Com Verificações e Correções Robustas) ---
 if not df.empty:
@@ -84,28 +98,4 @@ if not df.empty:
             st.warning("⚠️ Foram encontrados valores não numéricos ou em branco na coluna 'Passageiros'. As linhas com problemas serão removidas.")
             df.dropna(subset=['Passageiros'], inplace=True)
     else:
-        st.error("❌ Erro Crítico: Coluna 'Passageiros' não encontrada no seu arquivo CSV. Por favor, verifique o nome da coluna no seu CSV.")
-        st.stop()
-
-    # Cria uma coluna numérica para o mês usando o mapeamento
-    # Se algum mês não for encontrado no 'month_to_num', ele se tornará NaN
-    df['Mês_Num'] = df['Mês'].map(month_to_num)
-
-    # --- Verificação de Mês_Num após mapeamento ---
-    if df['Mês_Num'].isnull().any():
-        st.warning("⚠️ Foram encontrados meses no seu CSV que NÃO PUDERAM SER MAPEADOS (resultaram em NaN). Verifique a coluna 'Mês' para typos ou formatos inesperados.")
-        st.dataframe(df[df['Mês_Num'].isnull()]) # Mostra as linhas com problema
-        # Remove linhas com meses inválidos se não for possível corrigi-los, para evitar erros futuros
-        df.dropna(subset=['Mês_Num'], inplace=True)
-        st.info("Linhas com meses inválidos (não mapeados) foram removidas para evitar erros.")
-
-    # --- Criação e Validação da coluna 'Data' ---
-    # 'errors='coerce'' vai transformar qualquer erro de conversão em NaT (Not a Time)
-    df['Data'] = pd.to_datetime(
-        df['Ano'].astype(str) + '-' + df['Mês_Num'].astype(str) + '-01',
-        errors='coerce'
-    )
-
-    # --- Verificação de Data após conversão ---
-    if df['Data'].isnull().any():
-        st.warning("⚠️ For
+        st.error("❌ Erro Crítico: Coluna '
